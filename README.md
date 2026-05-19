@@ -75,6 +75,38 @@ Useful W&B metrics include:
 - `benchmark/efficient_hamiltonian/avg_steps_to_win`
 - `benchmark/step_improvement_pct`
 
+## 🥇 Current Best Algorithm
+
+The strongest model currently implemented is:
+
+```text
+EfficientHamiltonianPolicy
+```
+
+Source:
+
+```text
+src/snake_env/models/efficient.py
+```
+
+It keeps the Hamiltonian cycle as a safety invariant, then takes **safe forward shortcuts** when they reduce the distance to the apple without letting the snake head overtake the tail. In practice, this keeps the perfect-game guarantee while reducing total steps.
+
+Latest verified benchmark on 20x20, 5 evaluation episodes:
+
+| Model | Win rate | Avg steps to win | Notes |
+| --- | ---: | ---: | --- |
+| `hamiltonian` | `1.0` | `39629.4` | Safe baseline |
+| `efficient_hamiltonian` | `1.0` | `37569.4` | Current best |
+
+Improvement over baseline:
+
+```text
+2060 fewer steps on average
+5.20% step reduction
+```
+
+`TabularQAgent` uses `efficient_hamiltonian` as its default expert prior.
+
 ## ⚡ Benchmark Efficient vs Baseline Model
 
 Compare the baseline Hamiltonian policy against the efficient shortcut model:
