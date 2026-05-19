@@ -282,5 +282,5 @@ __marimo__/
 
 # Experiment logs and local artifacts
 wandb/
-models/
+./models/
 MEMORY.md
