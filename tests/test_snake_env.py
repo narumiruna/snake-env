@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from gymnasium.utils.env_checker import check_env
 
-from snake_env.agent import HamiltonianPolicy
 from snake_env.env import SnakeEnv
+from snake_env.models import EfficientHamiltonianPolicy
+from snake_env.models import HamiltonianPolicy
+from snake_env.runner import run_agent_episodes
 
 
 def test_env_passes_gymnasium_checker() -> None:
@@ -34,3 +36,11 @@ def test_hamiltonian_policy_wins_20x20() -> None:
 
     assert info["won"] is True
     assert info["length"] == 400
+
+
+def test_efficient_policy_wins_and_uses_fewer_steps_than_baseline() -> None:
+    baseline = run_agent_episodes(HamiltonianPolicy(20), size=20, episodes=3, seed=10_007)
+    efficient = run_agent_episodes(EfficientHamiltonianPolicy(20), size=20, episodes=3, seed=10_007)
+
+    assert all(result["won"] for result in efficient)
+    assert sum(result["steps"] for result in efficient) < sum(result["steps"] for result in baseline)

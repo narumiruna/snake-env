@@ -5,8 +5,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from snake_env.agent import TabularQAgent
 from snake_env.env import SnakeEnv
+from snake_env.models import SnakePolicy
 
 EpisodeResult = dict[str, Any]
 EpisodeCallback = Callable[[int, EpisodeResult], None]
@@ -27,7 +27,7 @@ class RenderConfig:
 
 
 def run_agent_episodes(
-    agent: TabularQAgent,
+    agent: SnakePolicy,
     *,
     size: int,
     episodes: int,

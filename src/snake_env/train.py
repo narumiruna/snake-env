@@ -8,11 +8,13 @@ from pathlib import Path
 
 from loguru import logger
 
-from snake_env.agent import TabularQAgent
 from snake_env.env import SnakeEnv
+from snake_env.metrics import PerformanceMetrics
+from snake_env.models import TabularQAgent
 from snake_env.runner import EpisodeResult
 from snake_env.runner import RenderConfig
 from snake_env.runner import run_agent_episodes
+from snake_env.wandb_utils import init_wandb
 
 
 @dataclass(frozen=True)
@@ -21,61 +23,57 @@ class TrainConfig:
     episodes: int = 3
     seed: int = 7
     model_path: str = "models/snake_q_20x20.pkl"
-    use_wandb: bool = True
+    expert: str = "efficient_hamiltonian"
     wandb_project: str = "snake-env"
 
 
 def train(config: TrainConfig) -> TabularQAgent:
     env = SnakeEnv(size=config.size)
-    agent = TabularQAgent(size=config.size)
+    agent = TabularQAgent(size=config.size, expert_name=config.expert)
+    run = init_wandb(project=config.wandb_project, job_type="train", config=asdict(config))
 
-    run = None
-    if config.use_wandb:
-        import wandb
+    try:
+        for episode in range(config.episodes):
+            env.reset(seed=config.seed + episode)
+            total_reward = 0.0
+            terminated = truncated = False
+            while not (terminated or truncated):
+                state = agent.state(env)
+                action = agent.expert.act(env)
+                _, reward, terminated, truncated, info = env.step(action)
+                shaped_reward = reward + (0.25 if reward > 0 else 0.0) - 0.001
+                next_state = agent.state(env)
+                agent.learn_step(state, action, shaped_reward, next_state, terminated or truncated)
+                agent.reinforce_expert_action(state, action, reward=0.1)
+                total_reward += reward
 
-        os.environ.setdefault("WANDB_MODE", "offline")
-        run = wandb.init(project=config.wandb_project, config=asdict(config))
-
-    for episode in range(config.episodes):
-        env.reset(seed=config.seed + episode)
-        total_reward = 0.0
-        terminated = truncated = False
-        while not (terminated or truncated):
-            state = agent.state(env)
-            action = agent.expert.act(env)
-            obs, reward, terminated, truncated, info = env.step(action)
-            del obs
-            shaped_reward = reward + (0.05 if not terminated and not truncated else 0.0)
-            next_state = agent.state(env)
-            agent.learn_step(state, action, shaped_reward, next_state, terminated or truncated)
-            agent.reinforce_expert_action(state, action)
-            total_reward += reward
-
-        logger.info(
-            "episode={} score={} length={} steps={} reward={:.2f} won={}",
-            episode + 1,
-            info["score"],
-            info["length"],
-            info["steps"],
-            total_reward,
-            info["won"],
-        )
-        if run is not None:
-            run.log(
-                {
-                    "score": info["score"],
-                    "length": info["length"],
-                    "steps": info["steps"],
-                    "won": int(info["won"]),
-                    "reward": total_reward,
-                }
+            episode_log = {
+                "train/episode": episode + 1,
+                "train/score": info["score"],
+                "train/length": info["length"],
+                "train/steps": info["steps"],
+                "train/won": int(info["won"]),
+                "train/reward": total_reward,
+                "train/efficiency": (10_000 * int(info["won"])) + info["score"] - info["steps"],
+            }
+            run.log(episode_log)
+            logger.info(
+                "episode={} score={} length={} steps={} reward={:.2f} won={} efficiency={}",
+                episode + 1,
+                info["score"],
+                info["length"],
+                info["steps"],
+                total_reward,
+                info["won"],
+                episode_log["train/efficiency"],
             )
 
-    agent.save(config.model_path)
-    logger.info("saved model to {}", config.model_path)
-    if run is not None:
+        agent.save(config.model_path)
         run.save(config.model_path)
+        logger.info("saved model to {}", config.model_path)
+    finally:
         run.finish()
+
     return agent
 
 
@@ -93,12 +91,13 @@ def evaluate(
 
     def log_result(episode: int, result: EpisodeResult) -> None:
         logger.info(
-            "eval_episode={} score={} steps={} won={} reason={}",
+            "eval_episode={} score={} steps={} won={} reason={} efficiency={}",
             episode,
             result["score"],
             result["steps"],
             result["won"],
             result.get("reason"),
+            (10_000 * int(result["won"])) + result["score"] - result["steps"],
         )
 
     return run_agent_episodes(
@@ -112,13 +111,13 @@ def evaluate(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train and evaluate a 20x20 Snake RL agent.")
+    parser = argparse.ArgumentParser(description="Train and evaluate an efficiency-optimized 20x20 Snake RL agent.")
     parser.add_argument("--size", type=int, default=20)
     parser.add_argument("--episodes", type=int, default=3)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--model-path", default="models/snake_q_20x20.pkl")
+    parser.add_argument("--expert", choices=["hamiltonian", "efficient_hamiltonian"], default="efficient_hamiltonian")
     parser.add_argument("--eval-episodes", type=int, default=5)
-    parser.add_argument("--no-wandb", action="store_true", help="Disable Weights & Biases logging.")
     parser.add_argument("--wandb-project", default=os.environ.get("WANDB_PROJECT", "snake-env"))
     parser.add_argument("--render", action="store_true", help="Show evaluation games in the terminal.")
     parser.add_argument("--render-every", type=int, default=200, help="Render every N evaluation steps.")
@@ -133,7 +132,7 @@ def main() -> None:
         episodes=args.episodes,
         seed=args.seed,
         model_path=args.model_path,
-        use_wandb=not args.no_wandb,
+        expert=args.expert,
         wandb_project=args.wandb_project,
     )
     train(config)
@@ -146,9 +145,25 @@ def main() -> None:
         render_every=args.render_every,
         render_delay=args.render_delay,
     )
-    wins = sum(1 for result in results if result["won"])
-    logger.info("evaluation wins: {}/{}", wins, len(results))
-    if wins != len(results):
+    metrics = PerformanceMetrics.from_results(results)
+    eval_run = init_wandb(
+        project=args.wandb_project,
+        job_type="train_evaluation",
+        config={
+            "size": args.size,
+            "episodes": args.eval_episodes,
+            "seed": args.seed + 10_000,
+            "model_path": args.model_path,
+        },
+    )
+    try:
+        for result in results:
+            eval_run.log({f"evaluation/{key}": value for key, value in result.items()})
+        eval_run.log(metrics.as_wandb_dict("evaluation/"))
+    finally:
+        eval_run.finish()
+    logger.info("evaluation metrics: {}", metrics)
+    if metrics.win_rate < 1.0:
         raise SystemExit(1)
 
 
