@@ -950,7 +950,8 @@ if (prefersReducedMotion) {
     clearTimeout(timer); doStep();
   });
 
-  init(!prefersReducedMotion);
+  const shouldAutoPlay = !prefersReducedMotion;
+  init(shouldAutoPlay);
 })();
 
 // ─── Hamiltonian cycle visualizer (6×6) ───
