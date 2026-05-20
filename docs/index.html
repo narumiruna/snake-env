@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="由淺入深介紹 snake-env 專案所使用的演算法：Gymnasium 環境、漢米頓環策略、效率捷徑優化、表格式 Q-Learning 強化學習，以及效率評分指標。" />
+  <meta name="keywords" content="snake, reinforcement learning, Q-learning, Hamiltonian cycle, Gymnasium, 強化學習, 漢米頓環, 貪食蛇" />
   <title>Snake-Env 演算法入門指南</title>
   <style>
     /* ── Reset & base ── */
@@ -381,7 +383,7 @@
     </ol>
 
     <pre><code><span class="cmt"># src/snake_env/models/hamiltonian.py</span>
-<span class="kw">def</span> <span class="fn">hamiltonian_cycle</span>(size: int) → list[Pos]:
+<span class="kw">def</span> <span class="fn">hamiltonian_cycle</span>(size: int) -&gt; list[Pos]:
     cells = [<span class="cls">Pos</span>(x, <span class="num">0</span>) <span class="kw">for</span> x <span class="kw">in</span> range(size)]  <span class="cmt"># 第一列</span>
     <span class="kw">for</span> x <span class="kw">in</span> range(size - <span class="num">1</span>, <span class="num">0</span>, -<span class="num">1</span>):
         offset = size - <span class="num">1</span> - x
@@ -784,7 +786,7 @@ efficiency_score = (win_rate * <span class="num">1_000_000.0</span>) + avg_score
 
 <footer>
   <div class="container">
-    <p>基於 <a href="https://github.com/narumiruna/snake-env" target="_blank">narumiruna/snake-env</a> 開源專案 · MIT License</p>
+    <p>基於 <a href="https://github.com/narumiruna/snake-env" target="_blank" rel="noopener noreferrer">narumiruna/snake-env</a> 開源專案 · MIT License</p>
   </div>
 </footer>
 
@@ -799,6 +801,8 @@ document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 // ─── Mini Snake demo (4×4) ───
 (function() {
   const CELL = 50, N = 4;
+  const DEMO_SEED = 42;        // fixed seed for reproducible apple positions
+  const STEP_INTERVAL_MS = 140; // milliseconds between animation steps
   const canvas = document.getElementById('demoCanvas');
   const ctx = canvas.getContext('2d');
   const infoEl = document.getElementById('demoInfo');
@@ -848,7 +852,7 @@ document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
       idxMap[key(x,y)] = i;
       nextMap[key(x,y)] = cycle[(i+1) % cycle.length];
     });
-    appleRng = seededRng(42);
+    appleRng = seededRng(DEMO_SEED);
     snake = [[0,0]];
     apple = randApple();
     step = 0; won = false; lost = false;
@@ -858,7 +862,7 @@ document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
   function scheduleStep() {
     if (won || lost) return;
-    timer = setTimeout(doStep, 140);
+    timer = setTimeout(doStep, STEP_INTERVAL_MS);
   }
 
   function doStep() {
