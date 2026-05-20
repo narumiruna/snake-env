@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="由淺入深介紹 snake-env 專案所使用的演算法：Gymnasium 環境、漢米頓環策略、效率捷徑優化、表格式 Q-Learning 強化學習，以及效率評分指標。" />
+  <meta name="keywords" content="snake, reinforcement learning, Q-learning, Hamiltonian cycle, Gymnasium, 強化學習, 漢米頓環, 貪食蛇" />
+  <title>Snake-Env 演算法入門指南</title>
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --green:     #3fb950;
+      --blue:      #58a6ff;
+      --orange:    #ffa657;
+      --red:       #ff7b72;
+      --purple:    #bc8cff;
+      --yellow:    #e3b341;
+      --radius:    12px;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+    }
+
+    /* ── Layout ── */
+    .container { max-width: 860px; margin: 0 auto; padding: 0 24px; }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(13,17,23,.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 0;
+    }
+    nav .inner {
+      max-width: 860px; margin: 0 auto; padding: 0 24px;
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    }
+    nav .logo { font-weight: 700; font-size: 1.1rem; color: var(--green); text-decoration: none; }
+    nav a { color: var(--muted); text-decoration: none; font-size: .9rem; transition: color .2s; }
+    nav a:hover { color: var(--text); }
+
+    /* ── Hero ── */
+    .hero {
+      padding: 80px 0 60px;
+      text-align: center;
+    }
+    .hero h1 { font-size: 2.8rem; font-weight: 800; line-height: 1.2; margin-bottom: 16px; }
+    .hero h1 span { color: var(--green); }
+    .hero p { color: var(--muted); font-size: 1.1rem; max-width: 600px; margin: 0 auto 32px; }
+    .badge-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 20px; font-size: .85rem; font-weight: 600;
+      border: 1px solid var(--border);
+    }
+    .badge.green  { border-color: var(--green);  color: var(--green);  background: rgba(63,185,80,.1); }
+    .badge.blue   { border-color: var(--blue);   color: var(--blue);   background: rgba(88,166,255,.1); }
+    .badge.orange { border-color: var(--orange); color: var(--orange); background: rgba(255,166,87,.1); }
+    .badge.purple { border-color: var(--purple); color: var(--purple); background: rgba(188,140,255,.1); }
+
+    /* ── TOC ── */
+    .toc {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px 28px; margin: 40px 0;
+    }
+    .toc h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: 12px; }
+    .toc ol { padding-left: 20px; }
+    .toc li { margin: 6px 0; }
+    .toc a { color: var(--blue); text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+
+    /* ── Section ── */
+    section { padding: 60px 0; border-top: 1px solid var(--border); }
+    .section-label {
+      display: inline-block;
+      padding: 3px 10px; border-radius: 4px; font-size: .75rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px;
+    }
+    .level-1 { background: rgba(63,185,80,.15);  color: var(--green); }
+    .level-2 { background: rgba(88,166,255,.15); color: var(--blue); }
+    .level-3 { background: rgba(255,166,87,.15); color: var(--orange); }
+    .level-4 { background: rgba(188,140,255,.15);color: var(--purple); }
+    .level-5 { background: rgba(227,179,65,.15); color: var(--yellow); }
+
+    h2 { font-size: 1.9rem; font-weight: 700; margin-bottom: 12px; }
+    h3 { font-size: 1.2rem; font-weight: 600; margin: 28px 0 10px; }
+    p  { margin: 12px 0; color: var(--text); }
+    ul, ol { padding-left: 24px; margin: 10px 0; }
+    li { margin: 6px 0; }
+    strong { color: var(--text); }
+    em { color: var(--muted); font-style: normal; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px 24px; margin: 20px 0;
+    }
+    .card-title { font-size: .9rem; font-weight: 700; text-transform: uppercase;
+                  letter-spacing: .06em; color: var(--muted); margin-bottom: 8px; }
+
+    /* ── Code ── */
+    pre {
+      background: #0d1117; border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px; overflow-x: auto;
+      font-size: .88rem; line-height: 1.6; margin: 16px 0;
+    }
+    code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
+    p code, li code {
+      background: rgba(88,166,255,.12); border: 1px solid rgba(88,166,255,.25);
+      border-radius: 4px; padding: 1px 6px; font-size: .87em; color: var(--blue);
+    }
+    .kw  { color: var(--purple); }
+    .fn  { color: var(--blue); }
+    .str { color: var(--green); }
+    .cmt { color: var(--muted); }
+    .num { color: var(--orange); }
+    .cls { color: var(--yellow); }
+
+    /* ── Snake canvas ── */
+    .canvas-wrap {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 12px; margin: 24px 0;
+    }
+    canvas { border: 2px solid var(--border); border-radius: 8px; image-rendering: pixelated; }
+    .ctrl-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+    .btn {
+      padding: 7px 18px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text); cursor: pointer; font-size: .9rem;
+      transition: border-color .2s, background .2s;
+    }
+    .btn:hover { border-color: var(--blue); background: rgba(88,166,255,.08); }
+    .btn.primary { border-color: var(--green); color: var(--green); background: rgba(63,185,80,.08); }
+    .btn.primary:hover { background: rgba(63,185,80,.15); }
+
+    /* ── Hamiltonian grid ── */
+    .ham-grid-wrap { display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap; margin: 20px 0; }
+    .ham-label { font-size: .8rem; color: var(--muted); text-align: center; margin-top: 6px; }
+
+    /* ── Reward table ── */
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: .9rem; }
+    th, td { padding: 10px 14px; border: 1px solid var(--border); text-align: left; }
+    th { background: var(--surface); color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: .78rem; letter-spacing: .06em; }
+    tr:nth-child(even) td { background: rgba(22,27,34,.6); }
+
+    /* ── Formula ── */
+    .formula {
+      background: #0d1117; border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 16px 24px; font-family: monospace; font-size: 1rem;
+      color: var(--yellow); text-align: center; margin: 16px 0;
+      letter-spacing: .03em;
+    }
+
+    /* ── Steps diagram ── */
+    .steps { display: flex; gap: 0; margin: 20px 0; }
+    .step {
+      flex: 1; position: relative; padding: 14px 10px; text-align: center;
+      background: var(--surface); border: 1px solid var(--border);
+      font-size: .82rem; line-height: 1.4;
+    }
+    .step:not(:last-child)::after {
+      content: "→"; position: absolute; right: -12px; top: 50%; transform: translateY(-50%);
+      font-size: 1rem; color: var(--muted); z-index: 1;
+    }
+    .step:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+    .step:last-child  { border-radius: 0 var(--radius) var(--radius) 0; }
+    .step .step-num { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    .step .step-title { font-weight: 700; color: var(--blue); margin: 4px 0; }
+
+    /* ── Metric bar ── */
+    .metric-row { display: flex; align-items: center; gap: 12px; margin: 8px 0; font-size: .9rem; }
+    .metric-label { width: 220px; color: var(--muted); flex-shrink: 0; }
+    .metric-bar { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+    .metric-fill { height: 100%; border-radius: 4px; }
+    .metric-val { width: 80px; text-align: right; font-family: monospace; }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border); padding: 40px 0;
+      text-align: center; color: var(--muted); font-size: .85rem;
+    }
+    footer a { color: var(--blue); text-decoration: none; }
+
+    /* ── Util ── */
+    .tip {
+      background: rgba(88,166,255,.08); border-left: 3px solid var(--blue);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      padding: 12px 18px; margin: 16px 0; font-size: .92rem;
+    }
+    .tip .label { font-weight: 700; color: var(--blue); margin-bottom: 4px; }
+    .warn {
+      background: rgba(255,166,87,.08); border-left: 3px solid var(--orange);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      padding: 12px 18px; margin: 16px 0; font-size: .92rem;
+    }
+    .warn .label { font-weight: 700; color: var(--orange); margin-bottom: 4px; }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+    @media (max-width: 600px) { .two-col { grid-template-columns: 1fr; } .steps { flex-direction: column; } .step::after { display: none; } }
+
+    /* ── Scroll-in animation ── */
+    .reveal { opacity: 0; transform: translateY(24px); transition: opacity .5s, transform .5s; }
+    .reveal.visible { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .reveal { opacity: 1; transform: none; transition: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════ NAV ═══════════════ -->
+<nav>
+  <div class="inner">
+    <a href="#" class="logo">🐍 snake-env</a>
+    <a href="#intro">遊戲基礎</a>
+    <a href="#hamiltonian">漢米頓環</a>
+    <a href="#efficient">效率優化</a>
+    <a href="#qlearning">Q-Learning</a>
+    <a href="#metric">評分指標</a>
+  </div>
+</nav>
+
+<!-- ═══════════════ HERO ═══════════════ -->
+<div class="container">
+  <div class="hero reveal">
+    <h1>Snake-Env<br/><span>演算法入門指南</span></h1>
+    <p>從零開始，逐步了解這個貪食蛇 AI 專案背後用到的核心演算法。不需要任何先備知識！</p>
+    <div class="badge-row">
+      <span class="badge green">🎮 Gymnasium 環境</span>
+      <span class="badge blue">🔄 漢米頓環</span>
+      <span class="badge orange">⚡ 效率捷徑</span>
+      <span class="badge purple">🧠 Q-Learning</span>
+    </div>
+  </div>
+
+  <!-- TOC -->
+  <div class="toc reveal">
+    <h2>目錄</h2>
+    <ol>
+      <li><a href="#intro">貪食蛇遊戲與 Gymnasium 環境</a></li>
+      <li><a href="#hamiltonian">漢米頓環（Hamiltonian Cycle）</a></li>
+      <li><a href="#efficient">效率漢米頓捷徑策略</a></li>
+      <li><a href="#qlearning">表格式 Q-Learning 強化學習</a></li>
+      <li><a href="#metric">效率評分指標</a></li>
+    </ol>
+  </div>
+
+  <!-- ═══════════════ SECTION 1 ═══════════════ -->
+  <section id="intro" class="reveal">
+    <span class="section-label level-1">Level 1 — 基礎</span>
+    <h2>貪食蛇遊戲與 Gymnasium 環境</h2>
+    <p>
+      在開始了解 AI 演算法之前，我們先搞清楚「環境」是什麼。
+      這個專案使用 <strong>Gymnasium</strong>（前身為 OpenAI Gym）——一個讓 AI 代理與遊戲互動的標準介面。
+    </p>
+
+    <h3>🎮 遊戲規則</h3>
+    <ul>
+      <li>棋盤大小預設為 <code>20 × 20</code>（400 格）</li>
+      <li>蛇從 <code>(0, 0)</code> 出發，每步可選擇 上 / 右 / 下 / 左 四個方向</li>
+      <li>吃到蘋果 → 蛇身增長 1 格，得 1 分；蘋果隨機重生</li>
+      <li>撞牆或咬到自己 → 遊戲結束（失敗）</li>
+      <li>蛇填滿全部 400 格 → 遊戲結束（<strong>完美勝利</strong>）</li>
+    </ul>
+
+    <!-- Interactive canvas -->
+    <div class="canvas-wrap">
+      <canvas id="demoCanvas" width="200" height="200"></canvas>
+      <div class="ctrl-row">
+        <button class="btn primary" id="btnReset">▶ 重新開始</button>
+        <button class="btn" id="btnStep">單步執行</button>
+        <span id="demoInfo" style="color:var(--muted);font-size:.85rem;align-self:center"></span>
+      </div>
+      <p style="font-size:.8rem;color:var(--muted)">（示範：AI 控制的 4×4 棋盤）</p>
+    </div>
+
+    <h3>📐 觀察空間（Observation Space）</h3>
+    <p>每一步，環境提供給 AI 兩個資訊：</p>
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">board</div>
+        一個 <code>N × N</code> 的矩陣，每格的值代表：
+        <br/>0 = 空、1 = 頭、2 = 身體、3 = 蘋果
+      </div>
+      <div class="card">
+        <div class="card-title">direction</div>
+        目前蛇頭的行進方向<br/>
+        0=上、1=右、2=下、3=左
+      </div>
+    </div>
+
+    <h3>🎯 動作空間（Action Space）</h3>
+    <p>AI 每步必須回傳一個整數 <code>0–3</code>（上 / 右 / 下 / 左）。
+    注意：反方向會被忽略（蛇不能直接掉頭），保持原方向移動。</p>
+
+    <h3>💰 獎勵設計（Reward）</h3>
+    <table>
+      <thead><tr><th>事件</th><th>獎勵</th></tr></thead>
+      <tbody>
+        <tr><td>吃到蘋果</td><td>+1.0</td></tr>
+        <tr><td>完美勝利（填滿棋盤）</td><td>+10.0</td></tr>
+        <tr><td>撞牆 / 咬自己</td><td>−1.0</td></tr>
+        <tr><td>超過步數上限（沒吃到蘋果）</td><td>−0.5</td></tr>
+        <tr><td>普通移動</td><td>−0.01（生存懲罰，避免繞圈）</td></tr>
+      </tbody>
+    </table>
+
+    <div class="tip">
+      <div class="label">💡 為什麼要有生存懲罰？</div>
+      若每步獎勵為 0，AI 可能學到「無所事事的繞圈策略」。微小的 −0.01 懲罰迫使它盡快吃蘋果。
+    </div>
+
+    <h3>📦 對應程式碼</h3>
+    <pre><code><span class="cmt"># src/snake_env/env.py</span>
+<span class="kw">class</span> <span class="cls">SnakeEnv</span>(gym.Env):
+    <span class="kw">def</span> <span class="fn">step</span>(self, action: int):
+        <span class="cmt"># 移動蛇頭</span>
+        new_head = self.head.<span class="fn">move</span>(self.direction)
+
+        <span class="kw">if</span> self.<span class="fn">_out_of_bounds</span>(new_head):
+            <span class="kw">return</span> ..., <span class="num">-1.0</span>, <span class="kw">True</span>, ...   <span class="cmt"># 撞牆</span>
+
+        <span class="kw">if</span> new_head <span class="kw">in</span> occupied:
+            <span class="kw">return</span> ..., <span class="num">-1.0</span>, <span class="kw">True</span>, ...   <span class="cmt"># 咬自己</span>
+
+        <span class="kw">if</span> will_grow <span class="kw">and</span> self.won:
+            <span class="kw">return</span> ..., <span class="num">10.0</span>, <span class="kw">True</span>, ...   <span class="cmt"># 完美勝利</span>
+
+        reward = <span class="num">1.0</span> <span class="kw">if</span> will_grow <span class="kw">else</span> <span class="num">-0.01</span>
+        <span class="kw">return</span> ..., reward, <span class="kw">False</span>, ...
+</code></pre>
+  </section>
+
+  <!-- ═══════════════ SECTION 2 ═══════════════ -->
+  <section id="hamiltonian" class="reveal">
+    <span class="section-label level-2">Level 2 — 進階</span>
+    <h2>漢米頓環（Hamiltonian Cycle）</h2>
+    <p>
+      純靠 RL 訓練要讓蛇填滿 400 格幾乎不可能——搜索空間太大。
+      這個專案用了一個「數學保證絕不輸」的基礎策略：<strong>漢米頓環</strong>。
+    </p>
+
+    <h3>什麼是漢米頓環？</h3>
+    <p>
+      在圖論中，<strong>漢米頓環（Hamiltonian Cycle）</strong>是一條路徑，
+      <em>恰好經過圖中每個頂點一次，最後回到起點</em>。
+    </p>
+    <p>
+      把棋盤想像成一張網格圖，每個格子是一個頂點，相鄰格子之間有邊。
+      如果我們找到一條漢米頓環，蛇只要沿著這條路走，就能：
+    </p>
+    <ul>
+      <li>永遠不會撞牆（環在棋盤內）</li>
+      <li>永遠不會咬到自己（每格只走一次）</li>
+      <li>最終一定會遇到所有格子（包含蘋果）</li>
+    </ul>
+
+    <div class="tip">
+      <div class="label">💡 重要前提</div>
+      棋盤大小必須是 <strong>偶數 × 偶數</strong>（如 20×20），這樣才保證漢米頓環存在。
+      這也是為什麼 <code>SnakeEnv</code> 強制 <code>size % 2 == 0</code>。
+    </div>
+
+    <h3>這個專案如何建構漢米頓環？</h3>
+    <p>程式碼使用一個固定的幾何規律，對任意偶數 N 都有效：</p>
+    <div class="canvas-wrap">
+      <canvas id="hamCanvas" width="240" height="240"></canvas>
+      <p style="font-size:.8rem;color:var(--muted)">6×6 棋盤的漢米頓環（箭頭表示行進順序）</p>
+    </div>
+
+    <p>建構邏輯（程式碼簡述）：</p>
+    <ol>
+      <li>第一列（row 0）從左到右：<code>(0,0) → (1,0) → ... → (N-1, 0)</code></li>
+      <li>對右側各列（row 1 到 N-1），奇偶列方向相反（蛇形走法）</li>
+      <li>最後沿最左行（x=0）往上回到起點</li>
+    </ol>
+
+    <pre><code><span class="cmt"># src/snake_env/models/hamiltonian.py</span>
+<span class="kw">def</span> <span class="fn">hamiltonian_cycle</span>(size: int) -&gt; list[Pos]:
+    cells = [<span class="cls">Pos</span>(x, <span class="num">0</span>) <span class="kw">for</span> x <span class="kw">in</span> range(size)]  <span class="cmt"># 第一列</span>
+    <span class="kw">for</span> x <span class="kw">in</span> range(size - <span class="num">1</span>, <span class="num">0</span>, -<span class="num">1</span>):
+        offset = size - <span class="num">1</span> - x
+        <span class="kw">if</span> offset % <span class="num">2</span> == <span class="num">0</span>:
+            cells.extend(<span class="cls">Pos</span>(x, y) <span class="kw">for</span> y <span class="kw">in</span> range(<span class="num">1</span>, size))
+        <span class="kw">else</span>:
+            cells.extend(<span class="cls">Pos</span>(x, y) <span class="kw">for</span> y <span class="kw">in</span> range(size - <span class="num">1</span>, <span class="num">0</span>, -<span class="num">1</span>))
+    cells.extend(<span class="cls">Pos</span>(<span class="num">0</span>, y) <span class="kw">for</span> y <span class="kw">in</span> range(size - <span class="num">1</span>, <span class="num">0</span>, -<span class="num">1</span>))  <span class="cmt"># 左側回頭</span>
+    <span class="kw">return</span> cells
+</code></pre>
+
+    <h3>HamiltonianPolicy 如何使用？</h3>
+    <p>建構環之後，策略非常簡單：</p>
+    <ol>
+      <li>預先計算每個位置的「下一格」（<code>next_pos</code> 字典）</li>
+      <li>每步只需查表：<em>我在哪裡？→ 下一格是哪裡？→ 要往哪個方向走？</em></li>
+    </ol>
+
+    <pre><code><span class="kw">class</span> <span class="cls">HamiltonianPolicy</span>(<span class="cls">SnakePolicy</span>):
+    <span class="kw">def</span> <span class="fn">act</span>(self, env: <span class="cls">SnakeEnv</span>) → int:
+        <span class="kw">return</span> self.<span class="fn">_action_toward</span>(env.head, self.next_pos[env.head])
+</code></pre>
+
+    <h3>環的距離（Cycle Distance）</h3>
+    <p>
+      每個格子在環中都有一個「序號」。<strong>環距離</strong>是從 A 出發，沿環方向到達 B 需要走幾步。
+      這個概念在後面的優化中非常重要：
+    </p>
+    <div class="formula">
+      cycle_distance(start, end) = (index[end] − index[start]) mod (N × N)
+    </div>
+
+    <h3>漢米頓策略的缺點</h3>
+    <div class="warn">
+      <div class="label">⚠️ 效率問題</div>
+      漢米頓策略<strong>保證勝利</strong>，但非常浪費。
+      就算蘋果在蛇頭正前方，蛇也得繞完整個環才能走到那裡。
+      20×20 棋盤平均需要 <strong>~39,629 步</strong>才能贏。
+    </div>
+
+    <div class="metric-row">
+      <span class="metric-label">漢米頓基準策略（39,629 步）</span>
+      <div class="metric-bar"><div class="metric-fill" style="width:100%;background:var(--blue)"></div></div>
+      <span class="metric-val" style="color:var(--blue)">100%</span>
+    </div>
+  </section>
+
+  <!-- ═══════════════ SECTION 3 ═══════════════ -->
+  <section id="efficient" class="reveal">
+    <span class="section-label level-3">Level 3 — 進階</span>
+    <h2>效率漢米頓捷徑策略</h2>
+    <p>
+      <code>EfficientHamiltonianPolicy</code> 繼承了漢米頓策略的「保證勝利」特性，
+      但加入了一個聰明的優化：<strong>在安全的時候走捷徑</strong>。
+    </p>
+
+    <h3>核心概念：安全捷徑</h3>
+    <p>
+      與其只能沿環走，現在蛇可以「跳過」環中的一段，直接往前移動——
+      前提是這個捷徑<strong>不會讓蛇頭追上蛇尾</strong>（這樣才不會咬到自己）。
+    </p>
+
+    <div class="canvas-wrap">
+      <canvas id="shortcutCanvas" width="280" height="180"></canvas>
+      <p style="font-size:.8rem;color:var(--muted)">左：必須繞遠路的情況 ｜ 右：可以走捷徑的情況</p>
+    </div>
+
+    <h3>安全判斷邏輯</h3>
+    <p>對每個候選動作（移動到相鄰格 <code>next_pos</code>），演算法做以下安全檢查：</p>
+
+    <div class="steps">
+      <div class="step"><div class="step-num">步驟 1</div><div class="step-title">基本過濾</div>排除反方向、出界、自碰撞</div>
+      <div class="step"><div class="step-num">步驟 2</div><div class="step-title">計算前進距離</div>這一步在環上走了幾格？</div>
+      <div class="step"><div class="step-num">步驟 3</div><div class="step-title">安全上限</div>前進距離 ≤ 頭到尾的環距離</div>
+      <div class="step"><div class="step-num">步驟 4</div><div class="step-title">貪心選擇</div>選擇到蘋果環距離最短的動作</div>
+    </div>
+
+    <h3>為什麼「前進距離 ≤ 頭到尾的環距離」是安全的？</h3>
+    <p>
+      把環想像成一條單向跑道。蛇頭在前，蛇尾在後。
+      蛇頭的位置永遠不能「追上」蛇尾——否則就咬到自己了。
+    </p>
+    <p>
+      用環上的序號：如果 <code>index[head] &lt; index[tail]</code>，
+      蛇頭可以「跳躍」（走捷徑），只要跳完後蛇頭的序號仍 &lt; 蛇尾序號，就是安全的。
+    </p>
+    <p>
+      蛇會長大（吃蘋果時）所以判斷稍有差異，<code>will_grow</code> 時安全上限更嚴格：
+    </p>
+    <div class="formula">
+      max_forward = tail_distance　（吃蘋果，蛇變長）<br/>
+      max_forward = tail_distance + 1　（普通移動，蛇尾跟著縮）
+    </div>
+
+    <h3>程式碼對照</h3>
+    <pre><code><span class="cmt"># src/snake_env/models/efficient.py</span>
+<span class="kw">def</span> <span class="fn">_safe_forward_actions</span>(self, env) → list:
+    tail_distance = self.<span class="fn">cycle_distance</span>(head, tail)
+
+    <span class="kw">for</span> action <span class="kw">in</span> Action:
+        <span class="cmt"># ... 基本過濾 ...</span>
+
+        forward_distance = self.<span class="fn">cycle_distance</span>(head, next_pos)
+        max_forward = tail_distance <span class="kw">if</span> will_grow <span class="kw">else</span> tail_distance + <span class="num">1</span>
+
+        <span class="kw">if</span> forward_distance >= max_forward:
+            <span class="kw">continue</span>  <span class="cmt"># 不安全，跳過</span>
+
+        apple_distance = self.<span class="fn">cycle_distance</span>(next_pos, env.apple)
+        candidates.append((apple_distance, -forward_distance, action))
+
+    <span class="cmt"># 選 apple_distance 最小的（最快吃到蘋果）</span>
+    <span class="kw">return</span> <span class="fn">min</span>(candidates)
+</code></pre>
+
+    <h3>效果</h3>
+
+    <div class="metric-row">
+      <span class="metric-label">漢米頓基準（39,629 步）</span>
+      <div class="metric-bar"><div class="metric-fill" style="width:100%;background:var(--blue)"></div></div>
+      <span class="metric-val" style="color:var(--blue)">基準</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">效率漢米頓（37,569 步）</span>
+      <div class="metric-bar"><div class="metric-fill" style="width:94.8%;background:var(--green)"></div></div>
+      <span class="metric-val" style="color:var(--green)">−5.2%</span>
+    </div>
+
+    <p style="color:var(--muted);font-size:.9rem;margin-top:8px">
+      平均少走 <strong style="color:var(--green)">2,060 步</strong>，且勝率維持 100%。
+    </p>
+
+    <div class="tip">
+      <div class="label">💡 設計哲學</div>
+      捷徑策略不需要任何學習——它完全基於數學保證。
+      這讓它成為 Q-Learning 代理的完美「先驗知識（expert prior）」：
+      當 AI 還不確定時，就跟著捷徑策略走，不會犯致命錯誤。
+    </div>
+  </section>
+
+  <!-- ═══════════════ SECTION 4 ═══════════════ -->
+  <section id="qlearning" class="reveal">
+    <span class="section-label level-4">Level 4 — 強化學習</span>
+    <h2>表格式 Q-Learning 強化學習</h2>
+    <p>
+      現在進入真正的機器學習部分。雖然漢米頓捷徑策略很好，
+      但也許 AI 可以從自身的遊戲經驗學到<em>更聰明的策略</em>？
+      這就是 <strong>Q-Learning</strong> 的用武之地。
+    </p>
+
+    <h3>強化學習基本概念</h3>
+    <p>強化學習的核心問題是：<em>代理如何在與環境互動中學習最佳行為策略？</em></p>
+
+    <div class="steps">
+      <div class="step"><div class="step-title">觀察</div>代理觀察當前狀態 s</div>
+      <div class="step"><div class="step-title">行動</div>依據策略選擇動作 a</div>
+      <div class="step"><div class="step-title">反饋</div>環境給予獎勵 r</div>
+      <div class="step"><div class="step-title">學習</div>更新策略，記住什麼好什麼壞</div>
+    </div>
+
+    <h3>什麼是 Q 值（Q-Value）？</h3>
+    <p>
+      <strong>Q(s, a)</strong> 是「在狀態 s 下執行動作 a，預期可以獲得多少未來總獎勵」。
+      Q-Learning 的目標就是學出這張表。
+    </p>
+    <div class="formula">
+      Q(s, a) ← Q(s, a) + α × [ r + γ × max<sub>a'</sub> Q(s', a') − Q(s, a) ]
+    </div>
+
+    <table>
+      <thead><tr><th>符號</th><th>意義</th><th>本專案數值</th></tr></thead>
+      <tbody>
+        <tr><td><code>α</code>（alpha）</td><td>學習率：每次更新的幅度</td><td>0.35</td></tr>
+        <tr><td><code>γ</code>（gamma）</td><td>折現率：多重視未來的獎勵</td><td>0.98</td></tr>
+        <tr><td><code>r</code></td><td>即時獎勵</td><td>−1 / −0.01 / +1 / +10</td></tr>
+        <tr><td><code>s, s'</code></td><td>當前 / 下一個狀態</td><td>蛇的完整狀態</td></tr>
+        <tr><td><code>a, a'</code></td><td>當前 / 未來最佳動作</td><td>上 / 右 / 下 / 左</td></tr>
+      </tbody>
+    </table>
+
+    <h3>「表格式」是什麼意思？</h3>
+    <p>
+      Q-Learning 有很多實作方式（如 DQN 用神經網路）。
+      「表格式（Tabular）」指的是直接用一個 <strong>Python 字典</strong>儲存所有狀態 → Q 值的對應，
+      而不用神經網路。
+    </p>
+    <pre><code><span class="cmt"># 每個狀態 → 一個長度為 4 的列表（對應4個動作）</span>
+q: defaultdict[tuple, list[float]] = defaultdict(
+    lambda: [<span class="num">0.0</span>, <span class="num">0.0</span>, <span class="num">0.0</span>, <span class="num">0.0</span>]
+)
+</code></pre>
+
+    <div class="warn">
+      <div class="label">⚠️ 狀態空間爆炸</div>
+      20×20 棋盤的狀態數量理論上天文數字般巨大（蛇可以有無數種形狀）。
+      純表格式 Q-Learning 很難覆蓋所有狀態，因此本專案的聰明之處在於
+      結合專家策略（expert prior），讓 AI 在未知狀態下有安全的預設行為。
+    </div>
+
+    <h3>專家策略先驗（Expert Prior）</h3>
+    <p>這是本專案最有趣的設計之一。<code>TabularQAgent</code> 在選擇動作時的邏輯是：</p>
+
+    <pre><code><span class="kw">def</span> <span class="fn">act</span>(self, env, *, greedy=<span class="kw">True</span>, epsilon=<span class="num">0.0</span>):
+    state = self.<span class="fn">state</span>(env)
+    expert_action = self.expert.<span class="fn">act</span>(env)  <span class="cmt"># 效率漢米頓策略</span>
+
+    values = self.q.<span class="fn">get</span>(state)
+    <span class="kw">if not</span> values <span class="kw">or</span> max(values) <= <span class="num">0.0</span>:
+        <span class="kw">return</span> expert_action  <span class="cmt"># 還沒學過這個狀態 → 信任專家</span>
+
+    <span class="cmt"># 學過了 → 選 Q 值最高的動作（同分時偏好專家動作）</span>
+    <span class="kw">return</span> max(range(<span class="num">4</span>), key=<span class="kw">lambda</span> a: (values[a], a == expert_action))
+</code></pre>
+
+    <p>這意味著：</p>
+    <ul>
+      <li>🆕 新狀態：直接跟著效率漢米頓策略走（不會犯致命錯誤）</li>
+      <li>📚 已學狀態：選 Q 值最高的動作，若同分則偏好專家意見</li>
+    </ul>
+
+    <h3>訓練過程：模仿學習（Imitation Learning）</h3>
+    <p>
+      本專案的訓練有一個特別之處：<strong>訓練時讓專家操作，AI 觀察並學習</strong>
+      （而不是 AI 隨機探索）。這叫做「行為複製（Behavior Cloning）」或「模仿學習」。
+    </p>
+    <pre><code><span class="kw">for</span> episode <span class="kw">in</span> range(config.episodes):
+    <span class="kw">while not</span> done:
+        state = agent.<span class="fn">state</span>(env)
+        action = agent.expert.<span class="fn">act</span>(env)  <span class="cmt"># 由「專家」（效率漢米頓）選動作</span>
+        _, reward, done, _, info = env.<span class="fn">step</span>(action)
+
+        shaped_reward = reward + (<span class="num">0.25</span> <span class="kw">if</span> reward > <span class="num">0</span> <span class="kw">else</span> <span class="num">0.0</span>) - <span class="num">0.001</span>
+        agent.<span class="fn">learn_step</span>(state, action, shaped_reward, next_state, done)
+        agent.<span class="fn">reinforce_expert_action</span>(state, action, reward=<span class="num">0.1</span>)
+</code></pre>
+
+    <p>
+      <code>reinforce_expert_action</code> 確保專家選過的動作 Q 值不會變成負數，
+      使 AI 永遠不會「主動避開」好的動作。
+    </p>
+
+    <h3>訓練參數總覽</h3>
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">訓練超參數</div>
+        <ul style="margin:0;padding-left:18px;font-size:.9rem">
+          <li>學習率 α = <code>0.35</code></li>
+          <li>折現率 γ = <code>0.98</code></li>
+          <li>預設訓練 3 個 episode</li>
+          <li>隨機種子保證可重現</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-title">獎勵塑形（Reward Shaping）</div>
+        <ul style="margin:0;padding-left:18px;font-size:.9rem">
+          <li>吃到蘋果額外 +0.25</li>
+          <li>每步扣 −0.001（加速學習）</li>
+          <li>保留原始 ±1 / ±10 獎勵</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ SECTION 5 ═══════════════ -->
+  <section id="metric" class="reveal">
+    <span class="section-label level-5">Level 5 — 評估指標</span>
+    <h2>效率評分指標</h2>
+    <p>
+      我們如何判斷哪個 AI 模型更好？
+      這個專案定義了一個「<strong>效率優先</strong>」的評分公式，讓模型比較有明確的依據。
+    </p>
+
+    <h3>設計哲學</h3>
+    <p>直覺上，一個好的貪食蛇 AI 要：</p>
+    <ol>
+      <li><strong>首先：一定要贏</strong>（勝率 = 1.0）</li>
+      <li><strong>其次：用更少的步數贏</strong>（越快越好）</li>
+      <li><strong>參考：分數高低</strong>（通常和勝率一致）</li>
+    </ol>
+
+    <h3>效率分數公式</h3>
+    <div class="formula">
+      efficiency_score = win_rate × 1,000,000 + avg_score − avg_steps_to_win
+    </div>
+
+    <p>分解來看：</p>
+    <table>
+      <thead><tr><th>項目</th><th>說明</th><th>示例值</th></tr></thead>
+      <tbody>
+        <tr><td><code>win_rate × 1,000,000</code></td><td>勝率佔絕對主導（權重是百萬）</td><td>1.0 × 10⁶ = 1,000,000</td></tr>
+        <tr><td><code>+ avg_score</code></td><td>加上平均得分（輔助）</td><td>+399</td></tr>
+        <tr><td><code>− avg_steps_to_win</code></td><td>減去贏局的平均步數（越少越好）</td><td>−37,569</td></tr>
+        <tr><td><strong>合計</strong></td><td>效率漢米頓策略的分數</td><td><strong>962,830</strong></td></tr>
+      </tbody>
+    </table>
+
+    <div class="tip">
+      <div class="label">💡 為什麼用 ×1,000,000？</div>
+      確保「勝率 0.99」的模型在任何情況下都比「勝率 1.0 但步數多」的模型評分低。
+      100 萬這個數字比任何合理的步數差值都大，所以勝率永遠是第一優先。
+    </div>
+
+    <h3>比較兩個策略</h3>
+    <table>
+      <thead>
+        <tr><th>模型</th><th>勝率</th><th>平均贏局步數</th><th>效率分數</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>HamiltonianPolicy</code></td>
+          <td>1.0</td>
+          <td>39,629</td>
+          <td>1,000,000 + 399 − 39,629 = <strong style="color:var(--blue)">960,770</strong></td>
+        </tr>
+        <tr>
+          <td><code>EfficientHamiltonianPolicy</code></td>
+          <td>1.0</td>
+          <td>37,569</td>
+          <td>1,000,000 + 399 − 37,569 = <strong style="color:var(--green)">962,830</strong></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>效率漢米頓策略多 <strong style="color:var(--green)">+2,060 分</strong>，
+    完全因為步數更少（勝率相同，分數相同）。</p>
+
+    <h3>對應程式碼</h3>
+    <pre><code><span class="cmt"># src/snake_env/metrics.py</span>
+efficiency_score = (win_rate * <span class="num">1_000_000.0</span>) + avg_score - avg_steps_to_win
+</code></pre>
+
+    <h3>📊 整體演算法比較總結</h3>
+    <div class="card">
+      <table style="margin:0">
+        <thead>
+          <tr><th>演算法</th><th>類型</th><th>需要訓練？</th><th>完美勝率保證？</th><th>效率</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>HamiltonianPolicy</code></td>
+            <td>確定性規則</td>
+            <td>❌</td>
+            <td>✅</td>
+            <td>⭐⭐</td>
+          </tr>
+          <tr>
+            <td><code>EfficientHamiltonianPolicy</code></td>
+            <td>確定性規則+優化</td>
+            <td>❌</td>
+            <td>✅</td>
+            <td>⭐⭐⭐</td>
+          </tr>
+          <tr>
+            <td><code>TabularQAgent</code></td>
+            <td>強化學習</td>
+            <td>✅</td>
+            <td>✅（靠先驗保底）</td>
+            <td>⭐⭐⭐（可提升）</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════════ SUMMARY ═══════════════ -->
+  <section class="reveal" style="border-top:1px solid var(--border)">
+    <h2>🎓 學習路徑回顧</h2>
+    <p>你現在已經了解了這個專案的完整技術棧：</p>
+    <ol>
+      <li>
+        <strong>環境設計（SnakeEnv）</strong> — 遊戲規則、觀察空間、動作空間、獎勵函數是 RL 的基礎。
+      </li>
+      <li>
+        <strong>漢米頓環（HamiltonianPolicy）</strong> — 用圖論保證「一定能贏」的確定性策略。
+      </li>
+      <li>
+        <strong>效率捷徑（EfficientHamiltonianPolicy）</strong> — 在安全前提下走捷徑，大幅減少步數。
+      </li>
+      <li>
+        <strong>Q-Learning（TabularQAgent）</strong> — 結合模仿學習和 Q 值更新，以確定性先驗為後盾學習更優策略。
+      </li>
+      <li>
+        <strong>效率指標</strong> — 用 win_rate × 10⁶ + avg_score − avg_steps_to_win 量化模型品質。
+      </li>
+    </ol>
+
+    <div class="tip" style="margin-top:24px">
+      <div class="label">🚀 下一步</div>
+      想深入探索？試試看：
+      <ul style="margin-top:6px">
+        <li>在 <code>src/snake_env/models/</code> 中閱讀完整原始碼</li>
+        <li>修改 <code>alpha</code>、<code>gamma</code> 超參數，觀察訓練效果變化</li>
+        <li>實作自己的捷徑策略，看能不能更省步</li>
+        <li>嘗試用神經網路（DQN）取代表格式 Q-Learning</li>
+      </ul>
+    </div>
+  </section>
+
+</div><!-- /container -->
+
+<footer>
+  <div class="container">
+    <p>基於 <a href="https://github.com/narumiruna/snake-env" target="_blank" rel="noopener noreferrer">narumiruna/snake-env</a> 開源專案 · MIT License</p>
+  </div>
+</footer>
+
+<!-- ═══════════════ JAVASCRIPT ═══════════════ -->
+<script>
+// ─── Scroll reveal ───
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (prefersReducedMotion) {
+  document.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
+} else {
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+}
+
+// ─── Mini Snake demo (4×4) ───
+(function() {
+  const CELL = 50, N = 4;
+  const DEMO_SEED = 42;        // fixed seed for reproducible apple positions
+  const STEP_INTERVAL_MS = 140; // milliseconds between animation steps
+  const canvas = document.getElementById('demoCanvas');
+  const ctx = canvas.getContext('2d');
+  const infoEl = document.getElementById('demoInfo');
+  canvas.width = canvas.height = CELL * N;
+
+  // Colors
+  const COL = { bg:'#0d1117', grid:'#21262d', head:'#3fb950', body:'#238636', apple:'#ff7b72', tail:'#1a3d1e' };
+
+  // Hamiltonian cycle for 4x4
+  function buildCycle(size) {
+    const cells = [];
+    for (let x = 0; x < size; x++) cells.push([x, 0]);
+    for (let x = size - 1; x >= 1; x--) {
+      const offset = size - 1 - x;
+      if (offset % 2 === 0) { for (let y = 1; y < size; y++) cells.push([x, y]); }
+      else                  { for (let y = size - 1; y >= 1; y--) cells.push([x, y]); }
+    }
+    for (let y = size - 1; y >= 1; y--) cells.push([0, y]);
+    return cells;
+  }
+
+  function key(x, y) { return `${x},${y}`; }
+
+  let cycle, nextMap, idxMap, snake, apple, appleRng, step, won, lost, timer;
+
+  function randApple() {
+    const snakeSet = new Set(snake.map(([x,y]) => key(x,y)));
+    const free = [];
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++)
+      if (!snakeSet.has(key(x,y))) free.push([x, y]);
+    if (!free.length) return null;
+    return free[Math.floor(appleRng() * free.length)];
+  }
+
+  // Simple seeded RNG
+  function seededRng(seed) {
+    let s = seed;
+    return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0xFFFFFFFF; };
+  }
+
+  function init(autoPlay = true) {
+    clearTimeout(timer);
+    cycle  = buildCycle(N);
+    idxMap = {};
+    nextMap = {};
+    cycle.forEach(([x,y], i) => {
+      idxMap[key(x,y)] = i;
+      nextMap[key(x,y)] = cycle[(i+1) % cycle.length];
+    });
+    appleRng = seededRng(DEMO_SEED);
+    snake = [[0,0]];
+    apple = randApple();
+    step = 0; won = false; lost = false;
+    render();
+    if (autoPlay) scheduleStep();
+  }
+
+  function scheduleStep() {
+    if (won || lost) return;
+    timer = setTimeout(doStep, STEP_INTERVAL_MS);
+  }
+
+  function doStep() {
+    step++;
+    const [hx, hy] = snake[0];
+    const [nx, ny] = nextMap[key(hx, hy)];
+    const willGrow = apple && nx === apple[0] && ny === apple[1];
+    const bodyCheck = willGrow ? snake : snake.slice(0, -1);
+    const bodySet = new Set(bodyCheck.map(([x,y]) => key(x,y)));
+
+    if (bodySet.has(key(nx, ny))) { lost = true; infoEl.textContent = '💥 出錯！'; render(); return; }
+
+    snake.unshift([nx, ny]);
+    if (willGrow) {
+      if (snake.length === N * N) { won = true; infoEl.textContent = `🎉 完美勝利！共 ${step} 步`; render(); return; }
+      apple = randApple();
+    } else {
+      snake.pop();
+    }
+
+    infoEl.textContent = `步數: ${step}  蛇長: ${snake.length}`;
+    render();
+    scheduleStep();
+  }
+
+  function render() {
+    ctx.fillStyle = COL.bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Grid
+    ctx.strokeStyle = COL.grid;
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= N; i++) {
+      ctx.beginPath(); ctx.moveTo(i*CELL, 0); ctx.lineTo(i*CELL, N*CELL); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i*CELL); ctx.lineTo(N*CELL, i*CELL); ctx.stroke();
+    }
+
+    // Apple
+    if (apple) {
+      ctx.fillStyle = COL.apple;
+      ctx.beginPath();
+      ctx.arc(apple[0]*CELL+CELL/2, apple[1]*CELL+CELL/2, CELL*.35, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // Body
+    snake.slice(1).forEach(([x,y], i) => {
+      const t = i / snake.length;
+      ctx.fillStyle = i < snake.length - 2 ? COL.body : COL.tail;
+      roundRect(ctx, x*CELL+3, y*CELL+3, CELL-6, CELL-6, 6);
+    });
+
+    // Head
+    const [hx, hy] = snake[0];
+    ctx.fillStyle = COL.head;
+    roundRect(ctx, hx*CELL+2, hy*CELL+2, CELL-4, CELL-4, 8);
+
+    // Eyes
+    ctx.fillStyle = '#0d1117';
+    ctx.beginPath(); ctx.arc(hx*CELL+CELL*.35, hy*CELL+CELL*.38, 3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(hx*CELL+CELL*.65, hy*CELL+CELL*.38, 3, 0, Math.PI*2); ctx.fill();
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+    ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+    ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+    ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x, y, x+r, y);
+    ctx.closePath(); ctx.fill();
+  }
+
+  document.getElementById('btnReset').addEventListener('click', init);
+  document.getElementById('btnStep').addEventListener('click', () => {
+    clearTimeout(timer); doStep();
+  });
+
+  const shouldAutoPlay = !prefersReducedMotion;
+  init(shouldAutoPlay);
+})();
+
+// ─── Hamiltonian cycle visualizer (6×6) ───
+(function() {
+  const canvas = document.getElementById('hamCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const N = 6, CELL = 40;
+  canvas.width = canvas.height = N * CELL;
+
+  function buildCycle(size) {
+    const cells = [];
+    for (let x = 0; x < size; x++) cells.push([x, 0]);
+    for (let x = size - 1; x >= 1; x--) {
+      const offset = size - 1 - x;
+      if (offset % 2 === 0) { for (let y = 1; y < size; y++) cells.push([x, y]); }
+      else                  { for (let y = size - 1; y >= 1; y--) cells.push([x, y]); }
+    }
+    for (let y = size - 1; y >= 1; y--) cells.push([0, y]);
+    return cells;
+  }
+
+  const cycle = buildCycle(N);
+
+  // Background
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Draw path
+  ctx.strokeStyle = '#58a6ff';
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  cycle.forEach(([x,y], i) => {
+    const px = x * CELL + CELL/2, py = y * CELL + CELL/2;
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  });
+  // close back to start
+  ctx.lineTo(cycle[0][0]*CELL+CELL/2, cycle[0][1]*CELL+CELL/2);
+  ctx.stroke();
+
+  // Draw cells with sequence numbers
+  cycle.forEach(([x,y], i) => {
+    const px = x * CELL, py = y * CELL;
+    // cell
+    ctx.fillStyle = i === 0 ? 'rgba(63,185,80,.3)' : 'rgba(88,166,255,.08)';
+    ctx.fillRect(px+1, py+1, CELL-2, CELL-2);
+    // number
+    ctx.fillStyle = i === 0 ? '#3fb950' : '#8b949e';
+    ctx.font = `${i === 0 ? 'bold ' : ''}${CELL * .3}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(i, px + CELL/2, py + CELL/2);
+  });
+})();
+
+// ─── Shortcut canvas ───
+(function() {
+  const canvas = document.getElementById('shortcutCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = 280, H = 180;
+  canvas.width = W; canvas.height = H;
+
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, W, H);
+
+  // Left panel: no shortcut
+  drawPanel(ctx, 10, 10, 120, 160, false);
+  // Right panel: shortcut
+  drawPanel(ctx, 150, 10, 120, 160, true);
+
+  function drawPanel(ctx, ox, oy, pw, ph, shortcut) {
+    const N = 4, cell = Math.min(pw, ph) / N;
+    // Grid
+    ctx.strokeStyle = '#21262d';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= N; i++) {
+      ctx.beginPath(); ctx.moveTo(ox+i*cell, oy); ctx.lineTo(ox+i*cell, oy+N*cell); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ox, oy+i*cell); ctx.lineTo(ox+N*cell, oy+i*cell); ctx.stroke();
+    }
+
+    // Draw path
+    const pathColor = shortcut ? '#3fb950' : '#58a6ff';
+    const pathCoords = shortcut
+      ? [[1,2],[2,2],[3,2],[3,1],[3,0],[2,0]]   // shortcut path
+      : [[1,2],[1,3],[2,3],[3,3],[3,2],[3,1],[3,0],[2,0]]; // long way
+    ctx.strokeStyle = pathColor;
+    ctx.lineWidth = 2;
+    ctx.setLineDash(shortcut ? [] : [4,3]);
+    ctx.beginPath();
+    pathCoords.forEach(([x,y], i) => {
+      const px = ox + x*cell + cell/2, py = oy + y*cell + cell/2;
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Head
+    const [hx, hy] = [1,2];
+    ctx.fillStyle = '#3fb950';
+    ctx.beginPath();
+    ctx.arc(ox+hx*cell+cell/2, oy+hy*cell+cell/2, cell*.35, 0, Math.PI*2);
+    ctx.fill();
+
+    // Apple
+    const [ax, ay] = [2,0];
+    ctx.fillStyle = '#ff7b72';
+    ctx.beginPath();
+    ctx.arc(ox+ax*cell+cell/2, oy+ay*cell+cell/2, cell*.3, 0, Math.PI*2);
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = shortcut ? '#3fb950' : '#8b949e';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(shortcut ? '✓ 捷徑（安全）' : '× 必須繞路', ox + pw/2, oy + ph + 16);
+  }
+})();
+</script>
+</body>
+</html>
