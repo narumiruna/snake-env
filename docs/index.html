@@ -211,6 +211,10 @@
     /* ── Scroll-in animation ── */
     .reveal { opacity: 0; transform: translateY(24px); transition: opacity .5s, transform .5s; }
     .reveal.visible { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .reveal { opacity: 1; transform: none; transition: none; }
+    }
   </style>
 </head>
 <body>
@@ -263,7 +267,7 @@
 
     <h3>🎮 遊戲規則</h3>
     <ul>
-      <li>棋盤大小預設為 <code>20 × 20</code>（400 格）</li>
+      <li>專案的 benchmark / CLI 預設使用 <code>20 × 20</code>（400 格）；<code>SnakeEnv</code> 建構子預設為 <code>4 × 4</code></li>
       <li>蛇從 <code>(0, 0)</code> 出發，每步可選擇 上 / 右 / 下 / 左 四個方向</li>
       <li>吃到蘋果 → 蛇身增長 1 格，得 1 分；蘋果隨機重生</li>
       <li>撞牆或咬到自己 → 遊戲結束（失敗）</li>
@@ -272,7 +276,7 @@
 
     <!-- Interactive canvas -->
     <div class="canvas-wrap">
-      <canvas id="demoCanvas" width="200" height="200"></canvas>
+      <canvas id="demoCanvas" width="200" height="200" aria-label="4×4 貪食蛇 AI 示範動畫"></canvas>
       <div class="ctrl-row">
         <button class="btn primary" id="btnReset">▶ 重新開始</button>
         <button class="btn" id="btnStep">單步執行</button>
@@ -371,7 +375,7 @@
     <h3>這個專案如何建構漢米頓環？</h3>
     <p>程式碼使用一個固定的幾何規律，對任意偶數 N 都有效：</p>
     <div class="canvas-wrap">
-      <canvas id="hamCanvas" width="240" height="240"></canvas>
+      <canvas id="hamCanvas" width="240" height="240" aria-label="6×6 棋盤漢米頓環路徑示意圖"></canvas>
       <p style="font-size:.8rem;color:var(--muted)">6×6 棋盤的漢米頓環（箭頭表示行進順序）</p>
     </div>
 
@@ -447,7 +451,7 @@
     </p>
 
     <div class="canvas-wrap">
-      <canvas id="shortcutCanvas" width="280" height="180"></canvas>
+      <canvas id="shortcutCanvas" width="280" height="180" aria-label="效率捷徑策略比較示意圖"></canvas>
       <p style="font-size:.8rem;color:var(--muted)">左：必須繞遠路的情況 ｜ 右：可以走捷徑的情況</p>
     </div>
 
@@ -793,10 +797,15 @@ efficiency_score = (win_rate * <span class="num">1_000_000.0</span>) + avg_score
 <!-- ═══════════════ JAVASCRIPT ═══════════════ -->
 <script>
 // ─── Scroll reveal ───
-const observer = new IntersectionObserver(entries => {
-  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
-}, { threshold: 0.1 });
-document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (prefersReducedMotion) {
+  document.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
+} else {
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+}
 
 // ─── Mini Snake demo (4×4) ───
 (function() {
@@ -840,10 +849,10 @@ document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
   // Simple seeded RNG
   function seededRng(seed) {
     let s = seed;
-    return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0xFFFFFFFF; };
+    return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0x100000000; };
   }
 
-  function init() {
+  function init(autoPlay = true) {
     clearTimeout(timer);
     cycle  = buildCycle(N);
     idxMap = {};
@@ -857,7 +866,7 @@ document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
     apple = randApple();
     step = 0; won = false; lost = false;
     render();
-    scheduleStep();
+    if (autoPlay) scheduleStep();
   }
 
   function scheduleStep() {
@@ -865,7 +874,7 @@ document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
     timer = setTimeout(doStep, STEP_INTERVAL_MS);
   }
 
-  function doStep() {
+  function doStep(shouldSchedule = true) {
     step++;
     const [hx, hy] = snake[0];
     const [nx, ny] = nextMap[key(hx, hy)];
@@ -885,7 +894,7 @@ document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
     infoEl.textContent = `步數: ${step}  蛇長: ${snake.length}`;
     render();
-    scheduleStep();
+    if (shouldSchedule) scheduleStep();
   }
 
   function render() {
@@ -938,10 +947,10 @@ document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
   document.getElementById('btnReset').addEventListener('click', init);
   document.getElementById('btnStep').addEventListener('click', () => {
-    clearTimeout(timer); doStep();
+    clearTimeout(timer); doStep(false);
   });
 
-  init();
+  init(!prefersReducedMotion);
 })();
 
 // ─── Hamiltonian cycle visualizer (6×6) ───
